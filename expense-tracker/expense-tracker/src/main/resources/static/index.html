@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Expense Tracker</title>
+<style>
+  body{font-family:Arial,sans-serif;max-width:950px;margin:30px auto;padding:0 15px;color:#222}
+  h1{margin-bottom:5px}
+  .cards{display:flex;gap:12px;margin:15px 0}
+  .card{flex:1;padding:14px;border-radius:6px;color:#fff;text-align:center}
+  .card b{display:block;font-size:22px;margin-top:4px}
+  .inc{background:#27ae60}.exp{background:#c0392b}.bal{background:#2c3e50}
+  form{display:flex;gap:8px;flex-wrap:wrap;margin:15px 0}
+  input,select{padding:7px}
+  button{background:#2c3e50;color:#fff;border:none;padding:8px 14px;border-radius:4px;cursor:pointer}
+  button.del{background:#c0392b;padding:4px 10px}
+  table{width:100%;border-collapse:collapse;margin-top:10px}
+  th,td{border:1px solid #ccc;padding:8px;text-align:left}
+  th{background:#2c3e50;color:#fff}
+  .row{display:flex;gap:25px;flex-wrap:wrap}.row>div{flex:1;min-width:300px}
+  .bar{background:#3498db;height:14px;border-radius:3px}
+</style>
+</head>
+<body>
+<h1>Expense Tracker</h1>
+
+<div class="cards">
+  <div class="card inc">Income<b id="inc">0</b></div>
+  <div class="card exp">Expenses<b id="exp">0</b></div>
+  <div class="card bal">Balance<b id="bal">0</b></div>
+</div>
+
+<h3>Add Transaction</h3>
+<form id="f">
+  <input id="title" placeholder="Title" required>
+  <input id="amount" type="number" step="0.01" min="0" placeholder="Amount" required>
+  <select id="type"><option>EXPENSE</option><option>INCOME</option></select>
+  <select id="category"></select>
+  <input id="date" type="date" required>
+  <button type="submit">Add</button>
+</form>
+
+<div class="row">
+  <div>
+    <h3>Expenses by Category</h3>
+    <table id="catTable"><tr><th>Category</th><th>Total</th><th></th></tr></table>
+  </div>
+  <div>
+    <h3>Monthly Expenses (<span id="yr"></span>)</h3>
+    <table id="monTable"><tr><th>Month</th><th>Total</th></tr></table>
+  </div>
+</div>
+
+<h3>Transactions</h3>
+<table id="txTable">
+  <tr><th>Date</th><th>Title</th><th>Category</th><th>Type</th><th>Amount</th><th></th></tr>
+</table>
+
+<script>
+const api = '/api';
+const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const get = async p => (await fetch(api + p)).json();
+
+document.getElementById('date').valueAsDate = new Date();
+document.getElementById('yr').textContent = new Date().getFullYear();
+
+async function load() {
+  const cats = await get('/categories');
+  const sel = document.getElementById('category');
+  const keep = sel.value;
+  sel.innerHTML = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+  if (keep) sel.value = keep;
+
+  const s = await get('/reports/summary');
+  inc.textContent = s.totalIncome.toFixed(2);
+  exp.textContent = s.totalExpense.toFixed(2);
+  bal.textContent = s.balance.toFixed(2);
+
+  const bc = await get('/reports/by-category');
+  const max = Math.max(1, ...bc.map(r => r.total));
+  catTable.innerHTML = '<tr><th>Category</th><th>Total</th><th></th></tr>' +
+    bc.map(r => `<tr><td>${r.category}</td><td>${r.total.toFixed(2)}</td>
+      <td style="width:35%"><div class="bar" style="width:${r.total / max * 100}%"></div></td></tr>`).join('');
+
+  const mo = await get('/reports/monthly');
+  monTable.innerHTML = '<tr><th>Month</th><th>Total</th></tr>' +
+    mo.map(r => `<tr><td>${months[r.month - 1]}</td><td>${r.total.toFixed(2)}</td></tr>`).join('');
+
+  const tx = await get('/transactions');
+  txTable.innerHTML = '<tr><th>Date</th><th>Title</th><th>Category</th><th>Type</th><th>Amount</th><th></th></tr>' +
+    tx.map(t => `<tr><td>${t.date}</td><td>${t.title}</td><td>${t.category.name}</td><td>${t.type}</td>
+      <td>${t.amount.toFixed(2)}</td><td><button class="del" onclick="del(${t.id})">Delete</button></td></tr>`).join('');
+}
+
+document.getElementById('f').addEventListener('submit', async e => {
+  e.preventDefault();
+  await fetch(api + '/transactions', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      title: title.value,
+      amount: parseFloat(amount.value),
+      type: type.value,
+      date: date.value,
+      category: {id: parseInt(category.value)}
+    })
+  });
+  title.value = ''; amount.value = '';
+  load();
+});
+
+async function del(id) {
+  if (!confirm('Delete this transaction?')) return;
+  await fetch(api + '/transactions/' + id, {method: 'DELETE'});
+  load();
+}
+
+load();
+</script>
+</body>
+</html>
